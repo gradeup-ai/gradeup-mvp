@@ -4,12 +4,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import datetime
 from functools import wraps
-from sqlalchemy.exc import IntegrityError
 
 app = Flask(__name__)
 
-# 🔹 Подключение к PostgreSQL (замени на актуальный URL из Render)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_user:73Dm62s8x1XAizInR6XQxT2Jfr4drZun@dpg-cuk0p1dds78s739jsph0-a.oregon-postgres.render.com/gradeup_db?sslmode=require'
+# 🔹 Подключение к новой базе PostgreSQL (замени на актуальный `DATABASE_URL`!)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_gw2q_user:ssaBqXPAIZi0FMuKgwaSf95G4UDBAWWQ@dpg-cuk2f9d6l47c73c7nv60-a.oregon-postgres.render.com/gradeup_db_gw2q?sslmode=require'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'  # Используется для подписи JWT
 
@@ -33,29 +32,15 @@ class Candidate(db.Model):
     city = db.Column(db.String(50))
     position = db.Column(db.String(100))
 
-# Создание базы данных перед первым запуском
+# 🔹 Создаём таблицы (если их нет)
 with app.app_context():
     db.create_all()
 
-# 🔹 Декоратор для защиты маршрутов (JWT)
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            return jsonify({'message': 'Токен отсутствует'}), 401
-        try:
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-        except:
-            return jsonify({'message': 'Неверный токен'}), 401
-        return f(*args, **kwargs)
-    return decorated
-
 @app.route('/')
 def home():
-    return "Привет, Gradeup MVP с авторизацией!"
+    return "Привет, Gradeup MVP!"
 
-# ✅ Регистрация компании с обработкой ошибок
+# ✅ Регистрация компании
 @app.route('/register_company', methods=['POST'])
 def register_company():
     try:
@@ -63,7 +48,7 @@ def register_company():
         if not data:
             return jsonify({'error': 'Отсутствуют данные'}), 400
 
-        # Проверка на дубликаты
+        # Проверка дубликатов
         if Company.query.filter_by(email=data['email']).first():
             return jsonify({'error': 'Компания с таким email уже зарегистрирована'}), 400
         if Company.query.filter_by(inn=data['inn']).first():
@@ -82,9 +67,6 @@ def register_company():
         db.session.commit()
         return jsonify({'message': 'Компания зарегистрирована успешно!'}), 201
 
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({'error': 'Ошибка: компания с таким email или ИНН уже существует'}), 400
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
@@ -109,9 +91,6 @@ def register_candidate():
         db.session.commit()
         return jsonify({'message': 'Кандидат зарегистрирован успешно!'}), 201
 
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({'error': 'Ошибка: кандидат с таким email уже зарегистрирован'}), 400
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
@@ -138,11 +117,18 @@ def login():
 
 # ✅ Пример защищённого маршрута (только с токеном)
 @app.route('/protected', methods=['GET'])
-@token_required
 def protected():
+    token = request.headers.get('Authorization')
+    if not token:
+        return jsonify({'message': 'Токен отсутствует'}), 401
+    try:
+        data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    except:
+        return jsonify({'message': 'Неверный токен'}), 401
     return jsonify({'message': 'Вы авторизованы!'})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
 
 
