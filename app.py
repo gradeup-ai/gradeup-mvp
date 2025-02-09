@@ -3,9 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
 import openai
-from livekit.api import RoomServiceClient
+from livekit import RoomServiceClient, AccessToken, VideoGrant
 from livekit.models import CreateRoomRequest
-from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
@@ -21,15 +20,18 @@ LIVEKIT_URL = "wss://ai-hr-g13ip1bp.livekit.cloud"
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 
-# 🔹 Настройка OpenAI и Deepgram
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# 🔹 Настройка Deepgram
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-DEEPGRAM_VOICE_MODEL = "aura-asteria-en"  # Используем стандартный голос, можно заменить позже
+DEEPGRAM_VOICE_MODEL = "aura-asteria-en"  # Используем стандартный голос
+
+# 🔹 Подключение к OpenAI GPT-4o
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
 # 🔹 Создание клиента LiveKit
 lk_client = RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
 
-# ✅ Модели базы данных
+# 🔹 Модель компании
 class Company(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -38,6 +40,7 @@ class Company(db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
 
+# 🔹 Модель кандидата
 class Candidate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -46,6 +49,7 @@ class Candidate(db.Model):
     city = db.Column(db.String(100))
     position = db.Column(db.String(100))
 
+# 🔹 Модель вакансии
 class Vacancy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey('company.id'), nullable=False)
@@ -71,6 +75,34 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP!"
 
+# ✅ Приветствие AI-HR
+def get_ai_hr_greeting(candidate_name, vacancy, company_name):
+    return f"Здравствуйте, {candidate_name}! Меня зовут Эмили, и я – виртуальный HR компании {company_name}. Сегодня мы обсудим вашу квалификацию на позицию {vacancy}. Начнём с небольшой информации о вашем опыте?"
+
+# ✅ Прощание AI-HR
+def get_ai_hr_farewell(candidate_name):
+    return f"Спасибо, что уделили время на наше собеседование, {candidate_name}. Мы проанализируем ваши ответы, и скоро вы получите рекомендации и дальнейшие шаги. Хорошего дня!"
+
+# ✅ Генерация вопросов AI-HR на основе вакансии и профиля кандидата
+def generate_interview_question(candidate, vacancy):
+    prompt = f"""
+    Ты – виртуальный HR Эмили. Твоя задача – проводить собеседование.
+    
+    Вакансия: {vacancy.position} в компании {vacancy.company_id}
+    Навыки: {vacancy.skills}
+    Требуемые знания: {vacancy.theoretical_knowledge}
+
+    Кандидат: {candidate.name}, позиция: {candidate.position}
+    Город: {candidate.city}
+
+    Сформулируй релевантный вопрос для собеседования, основываясь на вакансии и профиле кандидата.
+    """
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[{"role": "system", "content": prompt}]
+    )
+    return response['choices'][0]['message']['content']
+
 # ✅ Создание комнаты в LiveKit
 @app.route('/create_room', methods=['POST'])
 def create_room():
@@ -85,51 +117,6 @@ def create_room():
 
     except Exception as e:
         return jsonify({"error": "Ошибка создания комнаты", "details": str(e)}), 500
-
-# ✅ AI-HR для проведения собеседований
-@app.route('/ai_hr_interview', methods=['POST'])
-def ai_hr_interview():
-    try:
-        data = request.get_json()
-        vacancy = data.get("vacancy", {})
-        candidate = data.get("candidate", {})
-
-        # 🟢 Достаем название вакансии и компании
-        position = vacancy.get('position', '').strip()
-        company_name = vacancy.get('company_name', '').strip()
-
-        position_text = position if position else "вакансия не указана"
-        company_text = company_name if company_name else "компания не указана"
-
-        prompt = f"""
-        Ты — виртуальный HR по имени Эмили. Сейчас ты проводишь собеседование на вакансию **{position_text}** в компании **{company_text}**.
-
-        👤 Кандидат: {candidate.get('name', 'Имя не указано')}
-        🏙 Город: {candidate.get('city', 'Город не указан')}
-        🔧 Навыки: {vacancy.get('skills', 'Навыки не указаны')}
-
-        **Начни собеседование с приветствия, представься и кратко расскажи о вакансии.**
-        Затем задавай **релевантные вопросы**, основываясь на вакансии и профиле кандидата.
-        После каждого ответа **оценивай**, но не озвучивай вердикт — просто веди беседу.
-
-        📝 **Пример вопросов:**  
-        - Расскажите, какой у вас был самый сложный проект, связанный с {vacancy.get('tools', 'указанными технологиями')}.
-        - Какие задачи вы решали с помощью {vacancy.get('skills', 'указанных навыков')}?
-        - Как вы относитесь к {vacancy.get('work_format', 'текущему формату работы')}?
-
-        **В конце поблагодари кандидата и скажи, что он получит отчет позже.**
-        """
-
-        openai.api_key = OPENAI_API_KEY
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[{"role": "system", "content": prompt}]
-        )
-
-        return jsonify({"ai_response": response['choices'][0]['message']['content']})
-
-    except Exception as e:
-        return jsonify({"error": "Ошибка AI HR", "details": str(e)}), 500
 
 # ✅ Генерация речи с Deepgram (TTS)
 @app.route('/generate_speech', methods=['POST'])
@@ -173,7 +160,13 @@ def transcribe_audio():
     except Exception as e:
         return jsonify({"error": "Ошибка распознавания речи", "details": str(e)}), 500
 
+# ✅ Функции для преобразования моделей в JSON
+def vacancy_to_dict(vacancy):
+    return {c.name: getattr(vacancy, c.name) for c in vacancy.__table__.columns}
+
+def company_to_dict(company):
+    return {c.name: getattr(company, c.name) for c in company.__table__.columns}
+
 # ✅ Запуск сервера
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-
