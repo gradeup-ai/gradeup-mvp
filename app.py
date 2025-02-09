@@ -2,8 +2,7 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
-from livekit import RoomServiceClient, AccessToken, VideoGrant
-from livekit.models import CreateRoomRequest
+from livekit import AccessToken, VideoGrant
 
 app = Flask(__name__)
 
@@ -22,9 +21,6 @@ LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 # 🔹 Настройка Deepgram
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 DEEPGRAM_VOICE_MODEL = "aura-asteria-en"  # Пока используем стандартный голос
-
-# Создание клиента LiveKit
-lk_client = RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
 
 # 🔹 Модель компании
 class Company(db.Model):
@@ -70,21 +66,6 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP!"
 
-# ✅ Создание комнаты в LiveKit
-@app.route('/create_room', methods=['POST'])
-def create_room():
-    try:
-        data = request.get_json()
-        room_name = data.get("room_name", "interview-room")
-
-        request = CreateRoomRequest(name=room_name)
-        room = lk_client.create_room(request)
-
-        return jsonify({"room_url": f"{LIVEKIT_URL}/join/{room.name}"})
-
-    except Exception as e:
-        return jsonify({"error": "Ошибка создания комнаты", "details": str(e)}), 500
-
 # ✅ Генерация токена доступа для LiveKit
 @app.route('/get_livekit_token', methods=['POST'])
 def get_livekit_token():
@@ -124,25 +105,6 @@ def generate_speech():
 
     except Exception as e:
         return jsonify({"error": "Ошибка генерации речи", "details": str(e)}), 500
-
-# ✅ Распознавание речи через Deepgram (STT)
-@app.route('/transcribe_audio', methods=['POST'])
-def transcribe_audio():
-    try:
-        if 'audio' not in request.files:
-            return jsonify({"error": "Файл аудио не найден"}), 400
-
-        audio_file = request.files['audio']
-        url = "https://api.deepgram.com/v1/listen"
-        headers = {
-            "Authorization": f"Token {DEEPGRAM_API_KEY}"
-        }
-        response = requests.post(url, headers=headers, files={"audio": audio_file})
-
-        return response.json()
-
-    except Exception as e:
-        return jsonify({"error": "Ошибка распознавания речи", "details": str(e)}), 500
 
 # ✅ Функции для преобразования моделей в JSON
 def vacancy_to_dict(vacancy):
