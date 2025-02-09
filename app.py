@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
 import openai
-from livekit import RoomServiceClient, AccessToken, VideoGrant
+from livekit import LiveKitRoomServiceClient, LiveKitAccessToken, LiveKitVideoGrant
 from livekit.models import CreateRoomRequest
 
 app = Flask(__name__)
