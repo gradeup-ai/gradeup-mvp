@@ -10,12 +10,7 @@ app = Flask(__name__)
 # 🔹 Подключение к базе данных PostgreSQL
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_8l0b_user:kfPPw4BhBttJ5QtTGUfq6UpofZ1G5c3y@dpg-cuk36rggph6c73bn3rbg-a.oregon-postgres.render.com/gradeup_db_8l0b?sslmode=require'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'supersecretkey'  # Секретный ключ для JWT
-
-# 🔹 Улучшенное подключение к БД (избегаем разрывов соединения)
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    "pool_pre_ping": True
-}
+app.config['SECRET_KEY'] = 'supersecretkey'  
 
 db = SQLAlchemy(app)
 
@@ -37,7 +32,24 @@ class Candidate(db.Model):
     city = db.Column(db.String(100))
     position = db.Column(db.String(100))
 
-# 🔹 Создаём таблицы при старте сервера
+# 🔹 Модель вакансии
+class Vacancy(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey('company.id'), nullable=False)
+    position = db.Column(db.String(100), nullable=False)
+    grade = db.Column(db.String(50))
+    tasks = db.Column(db.Text)
+    tools = db.Column(db.Text)
+    skills = db.Column(db.Text)
+    theoretical_knowledge = db.Column(db.Text)
+    salary_range = db.Column(db.String(100))
+    work_format = db.Column(db.String(50))
+    client_industry = db.Column(db.String(100))
+    city = db.Column(db.String(100))
+    work_time = db.Column(db.String(50))
+    benefits = db.Column(db.Text)
+    additional_info = db.Column(db.Text)
+
 with app.app_context():
     db.create_all()
 
@@ -46,118 +58,116 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP!"
 
-# ✅ Регистрация компании
-@app.route('/register_company', methods=['POST', 'OPTIONS'])
-def register_company():
-    if request.method == 'OPTIONS':
-        return jsonify({'message': 'CORS preflight OK'}), 200
-
+# ✅ Создание вакансии
+@app.route('/create_vacancy', methods=['POST'])
+def create_vacancy():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'Отсутствуют данные'}), 400
+            return jsonify({'error': 'Нет данных'}), 400
 
-        # Проверка на дубликаты
-        if Company.query.filter_by(email=data['email']).first():
-            return jsonify({'error': 'Компания с таким email уже зарегистрирована'}), 400
-        if Company.query.filter_by(inn=data['inn']).first():
-            return jsonify({'error': 'Компания с таким ИНН уже существует'}), 400
-
-        hashed_password = generate_password_hash(data['password'], method='pbkdf2:sha256')
-        new_company = Company(
-            name=data['name'],
-            inn=data['inn'],
-            description=data.get('description', ''),
-            email=data['email'],
-            password=hashed_password
-        )
-
-        db.session.add(new_company)
+        new_vacancy = Vacancy(**data)
+        db.session.add(new_vacancy)
         db.session.commit()
-        return jsonify({'message': 'Компания зарегистрирована успешно!'}), 201
+        return jsonify({'message': 'Вакансия создана успешно!', 'vacancy_id': new_vacancy.id}), 201
 
     except Exception as e:
-        db.session.rollback()  # Откатываем изменения при ошибке
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Регистрация кандидата
-@app.route('/register_candidate', methods=['POST', 'OPTIONS'])
-def register_candidate():
-    if request.method == 'OPTIONS':
-        return jsonify({'message': 'CORS preflight OK'}), 200
+# ✅ Получение всех вакансий
+@app.route('/vacancies', methods=['GET'])
+def get_vacancies():
+    vacancies = Vacancy.query.all()
+    return jsonify({'vacancies': [v.__dict__ for v in vacancies]}), 200
 
+# ✅ Получение вакансии по ID
+@app.route('/vacancy/<int:id>', methods=['GET'])
+def get_vacancy(id):
+    vacancy = Vacancy.query.get(id)
+    if not vacancy:
+        return jsonify({'error': 'Вакансия не найдена'}), 404
+    return jsonify(vacancy.__dict__), 200
+
+# ✅ Обновление вакансии
+@app.route('/update_vacancy/<int:id>', methods=['PUT'])
+def update_vacancy(id):
     try:
+        vacancy = Vacancy.query.get(id)
+        if not vacancy:
+            return jsonify({'error': 'Вакансия не найдена'}), 404
+
         data = request.get_json()
-        if not data:
-            return jsonify({'error': 'Отсутствуют данные'}), 400
+        for key, value in data.items():
+            setattr(vacancy, key, value)
 
-        if Candidate.query.filter_by(email=data['email']).first():
-            return jsonify({'error': 'Кандидат уже зарегистрирован'}), 400
-
-        hashed_password = generate_password_hash(data['password'], method='pbkdf2:sha256')
-        new_candidate = Candidate(
-            name=data['name'],
-            email=data['email'],
-            password=hashed_password,
-            city=data.get('city', ''),
-            position=data.get('position', '')
-        )
-
-        db.session.add(new_candidate)
         db.session.commit()
-        return jsonify({'message': 'Кандидат зарегистрирован успешно!'}), 201
+        return jsonify({'message': 'Вакансия обновлена успешно!'}), 200
 
     except Exception as e:
-        db.session.rollback()
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Авторизация (JWT-токен)
-@app.route('/login', methods=['POST'])
-def login():
+# ✅ Удаление вакансии
+@app.route('/delete_vacancy/<int:id>', methods=['DELETE'])
+def delete_vacancy(id):
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'Отсутствуют данные'}), 400
+        vacancy = Vacancy.query.get(id)
+        if not vacancy:
+            return jsonify({'error': 'Вакансия не найдена'}), 404
 
-        user = Company.query.filter_by(email=data['email']).first() or Candidate.query.filter_by(email=data['email']).first()
-        if not user or not check_password_hash(user.password, data['password']):
-            return jsonify({'error': 'Неверный email или пароль'}), 401
-
-        token = jwt.encode({'email': user.email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12)},
-                           app.config['SECRET_KEY'], algorithm='HS256')
-        return jsonify({'token': token})
+        db.session.delete(vacancy)
+        db.session.commit()
+        return jsonify({'message': 'Вакансия удалена успешно!'}), 200
 
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Проверка JWT-токена
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            return jsonify({'error': 'Токен отсутствует'}), 403
+# ✅ Получение списка компаний
+@app.route('/companies', methods=['GET'])
+def get_companies():
+    companies = Company.query.all()
+    return jsonify({'companies': [c.__dict__ for c in companies]}), 200
 
-        try:
-            token = token.split(" ")[1]  # "Bearer ТВОЙ_ТОКЕН"
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'], options={"verify_exp": False})
-            current_user = Company.query.filter_by(email=data['email']).first() or Candidate.query.filter_by(email=data['email']).first()
-            if not current_user:
-                return jsonify({'error': 'Недействительный токен'}), 403
-        except Exception as e:
-            return jsonify({'error': 'Ошибка проверки токена', 'details': str(e)}), 403
+# ✅ Получение информации о компании
+@app.route('/company/<int:id>', methods=['GET'])
+def get_company(id):
+    company = Company.query.get(id)
+    if not company:
+        return jsonify({'error': 'Компания не найдена'}), 404
+    return jsonify(company.__dict__), 200
 
-        return f(current_user, *args, **kwargs)
-    return decorated
+# ✅ Обновление информации о компании
+@app.route('/update_company/<int:id>', methods=['PUT'])
+def update_company(id):
+    try:
+        company = Company.query.get(id)
+        if not company:
+            return jsonify({'error': 'Компания не найдена'}), 404
 
-# ✅ Защищённый маршрут (доступен только с токеном)
-@app.route('/protected', methods=['GET'])
-@token_required
-def protected_route(current_user):
-    return jsonify({'message': 'Вы авторизованы!', 'user_email': current_user.email})
+        data = request.get_json()
+        for key, value in data.items():
+            setattr(company, key, value)
+
+        db.session.commit()
+        return jsonify({'message': 'Компания обновлена успешно!'}), 200
+
+    except Exception as e:
+        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
+
+# ✅ Удаление компании
+@app.route('/delete_company/<int:id>', methods=['DELETE'])
+def delete_company(id):
+    try:
+        company = Company.query.get(id)
+        if not company:
+            return jsonify({'error': 'Компания не найдена'}), 404
+
+        db.session.delete(company)
+        db.session.commit()
+        return jsonify({'message': 'Компания удалена успешно!'}), 200
+
+    except Exception as e:
+        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
 # ✅ Запуск сервера
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-
-
