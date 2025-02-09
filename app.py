@@ -8,7 +8,7 @@ from functools import wraps
 app = Flask(__name__)
 
 # 🔹 Вставь сюда новый `DATABASE_URL` из Render!
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql+psycopg2://НОВЫЙ_ПОЛЬЗОВАТЕЛЬ:НОВЫЙ_ПАРОЛЬ@НОВЫЙ_ХОСТ/НОВАЯ_БАЗА?sslmode=require'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_8l0b_user:kfPPw4BhBttJ5QtTGUfq6UpofZ1G5c3y@dpg-cuk36rggph6c73bn3rbg-a.oregon-postgres.render.com/gradeup_db_8l0b?sslmode=require'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'  # Секретный ключ для JWT
 
