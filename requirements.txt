@@ -5,4 +5,3 @@ gunicorn
 PyJWT
 requests
 livekit
-git+https://github.com/livekit/server-sdk-python.git
