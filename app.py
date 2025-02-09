@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
-from livekit import RoomServiceClient  # ✅ Исправленный импорт
-from livekit.models.room import CreateRoomRequest  # ✅ Исправленный импорт
+from livekit import RoomServiceClient, AccessToken, VideoGrant
+from livekit.models import CreateRoomRequest
 
 app = Flask(__name__)
 
@@ -17,13 +17,14 @@ db = SQLAlchemy(app)
 # 🔹 Настройка LiveKit
 LIVEKIT_URL = "wss://ai-hr-g13ip1bp.livekit.cloud"
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 
 # 🔹 Настройка Deepgram
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-DEEPGRAM_VOICE_MODEL = "aura-asteria-en"
+DEEPGRAM_VOICE_MODEL = "aura-asteria-en"  # Пока используем стандартный голос
 
-# Создание клиента для LiveKit
-lk_client = RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY)
+# Создание клиента LiveKit
+lk_client = RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
 
 # 🔹 Модель компании
 class Company(db.Model):
@@ -69,7 +70,7 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP!"
 
-# ✅ Создание комнаты в LiveKit (исправлено)
+# ✅ Создание комнаты в LiveKit
 @app.route('/create_room', methods=['POST'])
 def create_room():
     try:
@@ -83,6 +84,23 @@ def create_room():
 
     except Exception as e:
         return jsonify({"error": "Ошибка создания комнаты", "details": str(e)}), 500
+
+# ✅ Генерация токена доступа для LiveKit
+@app.route('/get_livekit_token', methods=['POST'])
+def get_livekit_token():
+    try:
+        data = request.get_json()
+        user_identity = data.get("identity", "candidate")
+
+        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, identity=user_identity)
+        grant = VideoGrant(room_join=True, room_list=True)
+        token.add_grant(grant)
+
+        jwt_token = token.to_jwt()
+        return jsonify({"token": jwt_token})
+
+    except Exception as e:
+        return jsonify({"error": "Ошибка генерации токена", "details": str(e)}), 500
 
 # ✅ Генерация речи с Deepgram (TTS)
 @app.route('/generate_speech', methods=['POST'])
