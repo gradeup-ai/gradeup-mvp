@@ -74,7 +74,7 @@ def create_vacancy():
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Получение всех вакансий (исправлено)
+# ✅ Получение всех вакансий
 @app.route('/vacancies', methods=['GET'])
 def get_vacancies():
     vacancies = Vacancy.query.all()
@@ -83,10 +83,13 @@ def get_vacancies():
 # ✅ Получение вакансии по ID (исправлено)
 @app.route('/vacancy/<int:id>', methods=['GET'])
 def get_vacancy(id):
-    vacancy = Vacancy.query.get(id)
-    if not vacancy:
-        return jsonify({'error': 'Вакансия не найдена'}), 404
-    return jsonify(vacancy_to_dict(vacancy)), 200
+    try:
+        vacancy = Vacancy.query.get(id)
+        if not vacancy:
+            return jsonify({'error': 'Вакансия не найдена'}), 404
+        return jsonify(vacancy_to_dict(vacancy)), 200
+    except Exception as e:
+        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
 # ✅ Обновление вакансии
 @app.route('/update_vacancy/<int:id>', methods=['PUT'])
@@ -106,7 +109,7 @@ def update_vacancy(id):
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Удаление вакансии
+# ✅ Удаление вакансии (исправлено)
 @app.route('/delete_vacancy/<int:id>', methods=['DELETE'])
 def delete_vacancy(id):
     try:
@@ -116,18 +119,18 @@ def delete_vacancy(id):
 
         db.session.delete(vacancy)
         db.session.commit()
-        return jsonify({'message': 'Вакансия удалена успешно!'}), 200
 
+        return jsonify({'message': 'Вакансия удалена успешно!'}), 200
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Получение списка компаний (исправлено)
+# ✅ Получение списка компаний
 @app.route('/companies', methods=['GET'])
 def get_companies():
     companies = Company.query.all()
     return jsonify({'companies': [company_to_dict(c) for c in companies]}), 200
 
-# ✅ Получение информации о компании (исправлено)
+# ✅ Получение информации о компании
 @app.route('/company/<int:id>', methods=['GET'])
 def get_company(id):
     company = Company.query.get(id)
@@ -168,7 +171,7 @@ def delete_company(id):
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Функции для корректного преобразования моделей в JSON
+# ✅ Функции для преобразования моделей в JSON
 def vacancy_to_dict(vacancy):
     return {c.name: getattr(vacancy, c.name) for c in vacancy.__table__.columns}
 
@@ -178,4 +181,3 @@ def company_to_dict(company):
 # ✅ Запуск сервера
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-
