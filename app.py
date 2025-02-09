@@ -7,10 +7,15 @@ from functools import wraps
 
 app = Flask(__name__)
 
-# 🔹 Вставь сюда новый `DATABASE_URL` из Render!
+# 🔹 Подключение к базе данных PostgreSQL
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_8l0b_user:kfPPw4BhBttJ5QtTGUfq6UpofZ1G5c3y@dpg-cuk36rggph6c73bn3rbg-a.oregon-postgres.render.com/gradeup_db_8l0b?sslmode=require'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'  # Секретный ключ для JWT
+
+# 🔹 Улучшенное подключение к БД (избегаем разрывов соединения)
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_pre_ping": True
+}
 
 db = SQLAlchemy(app)
 
@@ -42,8 +47,11 @@ def home():
     return "Привет, Gradeup MVP!"
 
 # ✅ Регистрация компании
-@app.route('/register_company', methods=['POST'])
+@app.route('/register_company', methods=['POST', 'OPTIONS'])
 def register_company():
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'CORS preflight OK'}), 200
+
     try:
         data = request.get_json()
         if not data:
@@ -69,11 +77,15 @@ def register_company():
         return jsonify({'message': 'Компания зарегистрирована успешно!'}), 201
 
     except Exception as e:
+        db.session.rollback()  # Откатываем изменения при ошибке
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
 # ✅ Регистрация кандидата
-@app.route('/register_candidate', methods=['POST'])
+@app.route('/register_candidate', methods=['POST', 'OPTIONS'])
 def register_candidate():
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'CORS preflight OK'}), 200
+
     try:
         data = request.get_json()
         if not data:
@@ -96,6 +108,7 @@ def register_candidate():
         return jsonify({'message': 'Кандидат зарегистрирован успешно!'}), 201
 
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
 # ✅ Авторизация (JWT-токен)
@@ -127,7 +140,7 @@ def token_required(f):
 
         try:
             token = token.split(" ")[1]  # "Bearer ТВОЙ_ТОКЕН"
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'], options={"verify_exp": False})
             current_user = Company.query.filter_by(email=data['email']).first() or Candidate.query.filter_by(email=data['email']).first()
             if not current_user:
                 return jsonify({'error': 'Недействительный токен'}), 403
