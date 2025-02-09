@@ -3,42 +3,33 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
 import openai
-from deepgram import Deepgram
-from livekit import AccessToken, VideoGrant
 from livekit.api import RoomServiceClient
 from livekit.models import CreateRoomRequest
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-# 🔹 Подключение к БД PostgreSQL
+# 🔹 Подключение к базе данных PostgreSQL
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 
 db = SQLAlchemy(app)
 
-# 🔹 API Keys
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # GPT-4o
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-DEEPGRAM_VOICE_MODEL = "aura-asteria-en"  # Пока стандартный голос
-
-# 🔹 Подключение к Deepgram
-dg_client = Deepgram(DEEPGRAM_API_KEY)
-
 # 🔹 Настройка LiveKit
 LIVEKIT_URL = "wss://ai-hr-g13ip1bp.livekit.cloud"
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 
-# Создание клиента LiveKit
+# 🔹 Настройка OpenAI и Deepgram
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+DEEPGRAM_VOICE_MODEL = "aura-asteria-en"  # Используем стандартный голос, можно заменить позже
+
+# 🔹 Создание клиента LiveKit
 lk_client = RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
 
-# 🔹 AI-HR Настройки
-AI_HR_NAME = "Эмили"
-GREETING_PROMPT = f"Здравствуйте! Меня зовут {AI_HR_NAME}, и я — виртуальный рекрутер. Сегодня мы проведем интервью на позицию {{position}} в компании {{company_name}}. Давайте начнем с рассказа о вашем опыте?"
-FAREWELL_PROMPT = f"Спасибо за интервью! В ближайшее время вы получите отчет с рекомендациями. Хорошего дня!"
-
-# 🔹 **Модели базы данных**
+# ✅ Модели базы данных
 class Company(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -51,37 +42,36 @@ class Candidate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
     city = db.Column(db.String(100))
     position = db.Column(db.String(100))
-    skills = db.Column(db.Text)
-    experience = db.Column(db.Text)
-    interview_score = db.Column(db.Float, default=0)
 
 class Vacancy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey('company.id'), nullable=False)
     position = db.Column(db.String(100), nullable=False)
-    skills = db.Column(db.Text)
+    grade = db.Column(db.String(50))
     tasks = db.Column(db.Text)
+    tools = db.Column(db.Text)
+    skills = db.Column(db.Text)
     theoretical_knowledge = db.Column(db.Text)
+    salary_range = db.Column(db.String(100))
+    work_format = db.Column(db.String(50))
+    client_industry = db.Column(db.String(100))
+    city = db.Column(db.String(100))
+    work_time = db.Column(db.String(50))
+    benefits = db.Column(db.Text)
+    additional_info = db.Column(db.Text)
 
 with app.app_context():
     db.create_all()
 
-# ✅ **Приветствие AI-HR**
-@app.route('/greet/<int:candidate_id>/<int:vacancy_id>', methods=['GET'])
-def greet(candidate_id, vacancy_id):
-    candidate = Candidate.query.get(candidate_id)
-    vacancy = Vacancy.query.get(vacancy_id)
-    company = Company.query.get(vacancy.company_id) if vacancy else None
+# ✅ Главная страница
+@app.route('/')
+def home():
+    return "Привет, Gradeup MVP!"
 
-    if not candidate or not vacancy or not company:
-        return jsonify({"error": "Кандидат, вакансия или компания не найдены"}), 404
-
-    greeting = GREETING_PROMPT.format(position=vacancy.position, company_name=company.name)
-    return jsonify({"message": greeting})
-
-# ✅ **Создание комнаты в LiveKit**
+# ✅ Создание комнаты в LiveKit
 @app.route('/create_room', methods=['POST'])
 def create_room():
     try:
@@ -96,68 +86,75 @@ def create_room():
     except Exception as e:
         return jsonify({"error": "Ошибка создания комнаты", "details": str(e)}), 500
 
-# ✅ **Генерация токена для подключения к LiveKit**
-@app.route('/get_livekit_token', methods=['POST'])
-def get_livekit_token():
+# ✅ AI-HR для проведения собеседований
+@app.route('/ai_hr_interview', methods=['POST'])
+def ai_hr_interview():
     try:
         data = request.get_json()
-        user_identity = data.get("identity", "candidate")
+        vacancy = data.get("vacancy", {})
+        candidate = data.get("candidate", {})
 
-        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, identity=user_identity)
-        grant = VideoGrant(room_join=True, room_list=True)
-        token.add_grant(grant)
+        # 🟢 Достаем название вакансии и компании
+        position = vacancy.get('position', '').strip()
+        company_name = vacancy.get('company_name', '').strip()
 
-        jwt_token = token.to_jwt()
-        return jsonify({"token": jwt_token})
-
-    except Exception as e:
-        return jsonify({"error": "Ошибка генерации токена", "details": str(e)}), 500
-
-# ✅ **Генерация вопросов AI-HR**
-@app.route('/generate_question', methods=['POST'])
-def generate_question():
-    try:
-        data = request.get_json()
-        candidate_id = data.get("candidate_id")
-        vacancy_id = data.get("vacancy_id")
-
-        candidate = Candidate.query.get(candidate_id)
-        vacancy = Vacancy.query.get(vacancy_id)
-
-        if not candidate or not vacancy:
-            return jsonify({"error": "Кандидат или вакансия не найдены"}), 404
+        position_text = position if position else "вакансия не указана"
+        company_text = company_name if company_name else "компания не указана"
 
         prompt = f"""
-        Ты — AI-рекрутер по имени {AI_HR_NAME}. Тебе нужно задать кандидату **релевантный вопрос** для оценки его навыков.
+        Ты — виртуальный HR по имени Эмили. Сейчас ты проводишь собеседование на вакансию **{position_text}** в компании **{company_text}**.
 
-        🔹 **Данные вакансии**:
-        Должность: {vacancy.position}
-        Компания: {Company.query.get(vacancy.company_id).name}
-        Навыки: {vacancy.skills}
-        Задачи: {vacancy.tasks}
-        Теоретические знания: {vacancy.theoretical_knowledge}
+        👤 Кандидат: {candidate.get('name', 'Имя не указано')}
+        🏙 Город: {candidate.get('city', 'Город не указан')}
+        🔧 Навыки: {vacancy.get('skills', 'Навыки не указаны')}
 
-        🔹 **Данные кандидата**:
-        Должность: {candidate.position}
-        Навыки: {candidate.skills}
-        Опыт: {candidate.experience}
+        **Начни собеседование с приветствия, представься и кратко расскажи о вакансии.**
+        Затем задавай **релевантные вопросы**, основываясь на вакансии и профиле кандидата.
+        После каждого ответа **оценивай**, но не озвучивай вердикт — просто веди беседу.
 
-        Сформулируй **только один** вопрос.
+        📝 **Пример вопросов:**  
+        - Расскажите, какой у вас был самый сложный проект, связанный с {vacancy.get('tools', 'указанными технологиями')}.
+        - Какие задачи вы решали с помощью {vacancy.get('skills', 'указанных навыков')}?
+        - Как вы относитесь к {vacancy.get('work_format', 'текущему формату работы')}?
+
+        **В конце поблагодари кандидата и скажи, что он получит отчет позже.**
         """
 
+        openai.api_key = OPENAI_API_KEY
         response = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
+            messages=[{"role": "system", "content": prompt}]
         )
 
-        question = response['choices'][0]['message']['content']
-        return jsonify({"question": question})
+        return jsonify({"ai_response": response['choices'][0]['message']['content']})
 
     except Exception as e:
-        return jsonify({"error": "Ошибка генерации вопроса", "details": str(e)}), 500
+        return jsonify({"error": "Ошибка AI HR", "details": str(e)}), 500
 
-# ✅ **Распознавание речи с Deepgram (STT)**
+# ✅ Генерация речи с Deepgram (TTS)
+@app.route('/generate_speech', methods=['POST'])
+def generate_speech():
+    try:
+        data = request.get_json()
+        text = data.get("text", "Добрый день! Начнем собеседование.")
+
+        url = "https://api.deepgram.com/v1/speak"
+        headers = {
+            "Authorization": f"Token {DEEPGRAM_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "text": text,
+            "model": DEEPGRAM_VOICE_MODEL
+        }
+
+        response = requests.post(url, json=payload, headers=headers)
+        return response.content  # Возвращает аудиофайл
+
+    except Exception as e:
+        return jsonify({"error": "Ошибка генерации речи", "details": str(e)}), 500
+
+# ✅ Распознавание речи через Deepgram (STT)
 @app.route('/transcribe_audio', methods=['POST'])
 def transcribe_audio():
     try:
@@ -176,7 +173,7 @@ def transcribe_audio():
     except Exception as e:
         return jsonify({"error": "Ошибка распознавания речи", "details": str(e)}), 500
 
-# ✅ **Запуск сервера**
+# ✅ Запуск сервера
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
 
