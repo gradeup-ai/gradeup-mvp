@@ -8,7 +8,7 @@ from functools import wraps
 app = Flask(__name__)
 
 # 🔹 Обновлённый `DATABASE_URL` (без `sslmode=require`)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_gw2q_user:ssaBqXPAIZi0FMuKgwaSf95G4UDBAWWQ@dpg-cuk2f9d6l47c73c7nv60-a.oregon-postgres.render.com/gradeup_db_gw2q?sslmode=require&sslcert=/etc/ssl/certs/ca-certificates.crt'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_gw2q_user:ssaBqXPAIZi0FMuKgwaSf95G4UDBAWWQ@dpg-cuk2f9d6l47c73c7nv60-a.oregon-postgres.render.com/gradeup_db_gw2q?sslmode=require&connect_timeout=10'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'  # Используется для подписи JWT
 
