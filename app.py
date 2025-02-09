@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
-from livekit import AccessToken, VideoGrant  # ✅ Исправленный импорт
 
 app = Flask(__name__)
 
@@ -14,7 +13,7 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 db = SQLAlchemy(app)
 
 # 🔹 Настройка LiveKit
-LIVEKIT_URL = "wss://ai-hr-g13ip1bp.livekit.cloud"
+LIVEKIT_API_URL = "https://ai-hr-g13ip1bp.livekit.cloud"
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 
@@ -66,22 +65,24 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP!"
 
-# ✅ Генерация токена доступа для LiveKit (обновлено)
-@app.route('/get_livekit_token', methods=['POST'])
-def get_livekit_token():
+# ✅ Создание комнаты в LiveKit (HTTP API)
+@app.route('/create_room', methods=['POST'])
+def create_room():
     try:
         data = request.get_json()
-        user_identity = data.get("identity", "candidate")
+        room_name = data.get("room_name", "interview-room")
 
-        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, identity=user_identity)
-        grant = VideoGrant(room_join=True, room_list=True)
-        token.add_grant(grant)
+        headers = {
+            "Authorization": f"Bearer {LIVEKIT_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {"name": room_name}
 
-        jwt_token = token.to_jwt()
-        return jsonify({"token": jwt_token})
+        response = requests.post(f"{LIVEKIT_API_URL}/twirp/livekit.RoomService/CreateRoom", json=payload, headers=headers)
+        return response.json()
 
     except Exception as e:
-        return jsonify({"error": "Ошибка генерации токена", "details": str(e)}), 500
+        return jsonify({"error": "Ошибка создания комнаты", "details": str(e)}), 500
 
 # ✅ Генерация речи с Deepgram (TTS)
 @app.route('/generate_speech', methods=['POST'])
