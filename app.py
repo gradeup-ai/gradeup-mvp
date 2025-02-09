@@ -3,27 +3,35 @@ from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
-# Подключение к облачной базе данных PostgreSQL (замени на свой URL!)
+# Подключение к базе PostgreSQL (замени на свой URL, если нужно)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_user:73Dm62s8x1XAizInR6XQxT2Jfr4drZun@dpg-cuk0p1dds78s739jsph0-a.oregon-postgres.render.com/gradeup_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Модель для хранения компаний
+# Модель компании
 class Company(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     inn = db.Column(db.String(20), unique=True, nullable=False)
     description = db.Column(db.Text)
 
-# Модель для хранения кандидатов
-class Candidate(db.Model):
+# Модель вакансии
+class Vacancy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    age = db.Column(db.Integer)
+    company_id = db.Column(db.Integer, db.ForeignKey('company.id'), nullable=False)
+    position = db.Column(db.String(100), nullable=False)
+    grade = db.Column(db.String(50))  # Джуниор, Мидл, Сеньор
+    tasks = db.Column(db.Text)
+    tools = db.Column(db.Text)
+    skills = db.Column(db.Text)
+    theoretical_knowledge = db.Column(db.Text)
+    salary_range = db.Column(db.String(50))
+    work_format = db.Column(db.String(50))
+    client_industry = db.Column(db.Text)
+    additional_info = db.Column(db.Text)
     city = db.Column(db.String(50))
-    position = db.Column(db.String(100))
-    cover_letter = db.Column(db.Text)
-    github_links = db.Column(db.Text)  # Храним как строку, потом преобразуем в список
+    work_time = db.Column(db.String(50))
+    benefits = db.Column(db.Text)
 
 # Создание базы данных перед первым запуском
 with app.app_context():
@@ -33,54 +41,60 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP с облачной базой PostgreSQL!"
 
-# Регистрация компании (POST)
-@app.route('/register_company', methods=['POST'])
-def register_company():
+# ✅ Создание вакансии (POST /create_vacancy)
+@app.route('/create_vacancy', methods=['POST'])
+def create_vacancy():
     data = request.get_json()
-    if not data or 'name' not in data or 'inn' not in data:
-        return jsonify({"error": "Некорректные данные"}), 400
+    
+    required_fields = ["company_id", "position", "grade", "tasks", "tools", "skills"]
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Отсутствуют обязательные поля"}), 400
 
-    new_company = Company(name=data['name'], inn=data['inn'], description=data.get('description', ''))
-    db.session.add(new_company)
-    db.session.commit()
-
-    return jsonify({"message": "Компания зарегистрирована успешно!", "company": {"id": new_company.id, "name": new_company.name, "inn": new_company.inn, "description": new_company.description}}), 201
-
-# Получение списка компаний (GET)
-@app.route('/companies', methods=['GET'])
-def get_companies():
-    companies = Company.query.all()
-    result = [{"id": c.id, "name": c.name, "inn": c.inn, "description": c.description} for c in companies]
-    return jsonify({"companies": result})
-
-# Регистрация кандидата (POST)
-@app.route('/register_candidate', methods=['POST'])
-def register_candidate():
-    data = request.get_json()
-    if not data or 'name' not in data or 'position' not in data:
-        return jsonify({"error": "Некорректные данные"}), 400
-
-    github_links = ', '.join(data.get('github_links', []))  # Преобразуем список в строку
-
-    new_candidate = Candidate(
-        name=data['name'],
-        age=data.get('age'),
-        city=data.get('city', ''),
+    new_vacancy = Vacancy(
+        company_id=data['company_id'],
         position=data['position'],
-        cover_letter=data.get('cover_letter', ''),
-        github_links=github_links
+        grade=data['grade'],
+        tasks=data.get('tasks', ''),
+        tools=data.get('tools', ''),
+        skills=data.get('skills', ''),
+        theoretical_knowledge=data.get('theoretical_knowledge', ''),
+        salary_range=data.get('salary_range', ''),
+        work_format=data.get('work_format', ''),
+        client_industry=data.get('client_industry', ''),
+        additional_info=data.get('additional_info', ''),
+        city=data.get('city', ''),
+        work_time=data.get('work_time', ''),
+        benefits=data.get('benefits', '')
     )
-    db.session.add(new_candidate)
+
+    db.session.add(new_vacancy)
     db.session.commit()
 
-    return jsonify({"message": "Кандидат зарегистрирован успешно!", "candidate": {"id": new_candidate.id, "name": new_candidate.name, "position": new_candidate.position}}), 201
+    return jsonify({"message": "Вакансия успешно создана!", "vacancy_id": new_vacancy.id}), 201
 
-# Получение списка кандидатов (GET)
-@app.route('/candidates', methods=['GET'])
-def get_candidates():
-    candidates = Candidate.query.all()
-    result = [{"id": c.id, "name": c.name, "position": c.position, "github_links": c.github_links.split(', ')} for c in candidates]
-    return jsonify({"candidates": result})
+# ✅ Получение всех вакансий (GET /vacancies)
+@app.route('/vacancies', methods=['GET'])
+def get_vacancies():
+    vacancies = Vacancy.query.all()
+    result = [{
+        "id": v.id,
+        "company_id": v.company_id,
+        "position": v.position,
+        "grade": v.grade,
+        "tasks": v.tasks,
+        "tools": v.tools,
+        "skills": v.skills,
+        "theoretical_knowledge": v.theoretical_knowledge,
+        "salary_range": v.salary_range,
+        "work_format": v.work_format,
+        "client_industry": v.client_industry,
+        "additional_info": v.additional_info,
+        "city": v.city,
+        "work_time": v.work_time,
+        "benefits": v.benefits
+    } for v in vacancies]
+    return jsonify({"vacancies": result}), 200
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
