@@ -2,7 +2,8 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
-import livekit
+from livekit import RoomServiceClient
+from livekit.models import CreateRoomRequest
 
 app = Flask(__name__)
 
@@ -18,7 +19,8 @@ LIVEKIT_URL = "wss://ai-hr-g13ip1bp.livekit.cloud"
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 
-lk_client = livekit.Client(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+# Создание клиента для LiveKit
+lk_client = RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
 
 # 🔹 Настройка Deepgram
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
@@ -68,14 +70,16 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP!"
 
-# ✅ Создание комнаты в LiveKit
+# ✅ Создание комнаты в LiveKit (исправлено)
 @app.route('/create_room', methods=['POST'])
 def create_room():
     try:
         data = request.get_json()
         room_name = data.get("room_name", "interview-room")
 
-        room = lk_client.create_room(room_name)
+        request = CreateRoomRequest(name=room_name)
+        room = lk_client.create_room(request)
+
         return jsonify({"room_url": f"{LIVEKIT_URL}/join/{room.name}"})
 
     except Exception as e:
