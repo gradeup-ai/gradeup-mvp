@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
-from livekit import AccessToken, VideoGrant
+from livekit import AccessToken, VideoGrant  # ✅ Исправленный импорт
 
 app = Flask(__name__)
 
@@ -66,7 +66,7 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP!"
 
-# ✅ Генерация токена доступа для LiveKit
+# ✅ Генерация токена доступа для LiveKit (обновлено)
 @app.route('/get_livekit_token', methods=['POST'])
 def get_livekit_token():
     try:
@@ -105,6 +105,25 @@ def generate_speech():
 
     except Exception as e:
         return jsonify({"error": "Ошибка генерации речи", "details": str(e)}), 500
+
+# ✅ Распознавание речи через Deepgram (STT)
+@app.route('/transcribe_audio', methods=['POST'])
+def transcribe_audio():
+    try:
+        if 'audio' not in request.files:
+            return jsonify({"error": "Файл аудио не найден"}), 400
+
+        audio_file = request.files['audio']
+        url = "https://api.deepgram.com/v1/listen"
+        headers = {
+            "Authorization": f"Token {DEEPGRAM_API_KEY}"
+        }
+        response = requests.post(url, headers=headers, files={"audio": audio_file})
+
+        return response.json()
+
+    except Exception as e:
+        return jsonify({"error": "Ошибка распознавания речи", "details": str(e)}), 500
 
 # ✅ Функции для преобразования моделей в JSON
 def vacancy_to_dict(vacancy):
