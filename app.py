@@ -1,18 +1,28 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
-import jwt
-import datetime
-from functools import wraps
+import os
+import requests
+import livekit
 
 app = Flask(__name__)
 
 # 🔹 Подключение к базе данных PostgreSQL
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://gradeup_db_8l0b_user:kfPPw4BhBttJ5QtTGUfq6UpofZ1G5c3y@dpg-cuk36rggph6c73bn3rbg-a.oregon-postgres.render.com/gradeup_db_8l0b?sslmode=require'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'supersecretkey'  
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 
 db = SQLAlchemy(app)
+
+# 🔹 Настройка LiveKit
+LIVEKIT_URL = "wss://ai-hr-g13ip1bp.livekit.cloud"
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
+
+lk_client = livekit.Client(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+
+# 🔹 Настройка Deepgram
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+DEEPGRAM_VOICE_MODEL = "aura-asteria-en"  # Модель для синтеза речи
 
 # 🔹 Модель компании
 class Company(db.Model):
@@ -58,118 +68,60 @@ with app.app_context():
 def home():
     return "Привет, Gradeup MVP!"
 
-# ✅ Создание вакансии
-@app.route('/create_vacancy', methods=['POST'])
-def create_vacancy():
+# ✅ Создание комнаты в LiveKit
+@app.route('/create_room', methods=['POST'])
+def create_room():
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({'error': 'Нет данных'}), 400
+        room_name = data.get("room_name", "interview-room")
 
-        new_vacancy = Vacancy(**data)
-        db.session.add(new_vacancy)
-        db.session.commit()
-        return jsonify({'message': 'Вакансия создана успешно!', 'vacancy_id': new_vacancy.id}), 201
+        room = lk_client.create_room(room_name)
+        return jsonify({"room_url": f"{LIVEKIT_URL}/join/{room.name}"})
 
     except Exception as e:
-        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
+        return jsonify({"error": "Ошибка создания комнаты", "details": str(e)}), 500
 
-# ✅ Получение всех вакансий
-@app.route('/vacancies', methods=['GET'])
-def get_vacancies():
-    vacancies = Vacancy.query.all()
-    return jsonify({'vacancies': [vacancy_to_dict(v) for v in vacancies]}), 200
-
-# ✅ Получение вакансии по ID (исправлено)
-@app.route('/vacancy/<int:id>', methods=['GET'])
-def get_vacancy(id):
+# ✅ Генерация речи с Deepgram (TTS)
+@app.route('/generate_speech', methods=['POST'])
+def generate_speech():
     try:
-        vacancy = Vacancy.query.get(id)
-        if not vacancy:
-            return jsonify({'error': 'Вакансия не найдена'}), 404
-        return jsonify(vacancy_to_dict(vacancy)), 200
-    except Exception as e:
-        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
-
-# ✅ Обновление вакансии
-@app.route('/update_vacancy/<int:id>', methods=['PUT'])
-def update_vacancy(id):
-    try:
-        vacancy = Vacancy.query.get(id)
-        if not vacancy:
-            return jsonify({'error': 'Вакансия не найдена'}), 404
-
         data = request.get_json()
-        for key, value in data.items():
-            setattr(vacancy, key, value)
+        text = data.get("text", "Добрый день! Начнем собеседование.")
 
-        db.session.commit()
-        return jsonify({'message': 'Вакансия обновлена успешно!'}), 200
+        url = "https://api.deepgram.com/v1/speak"
+        headers = {
+            "Authorization": f"Token {DEEPGRAM_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "text": text,
+            "model": DEEPGRAM_VOICE_MODEL
+        }
+
+        response = requests.post(url, json=payload, headers=headers)
+        return response.content  # Возвращает аудиофайл
 
     except Exception as e:
-        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
+        return jsonify({"error": "Ошибка генерации речи", "details": str(e)}), 500
 
-# ✅ Удаление вакансии (исправлено)
-@app.route('/delete_vacancy/<int:id>', methods=['DELETE'])
-def delete_vacancy(id):
+# ✅ Распознавание речи через Deepgram (STT)
+@app.route('/transcribe_audio', methods=['POST'])
+def transcribe_audio():
     try:
-        vacancy = Vacancy.query.get(id)
-        if not vacancy:
-            return jsonify({'error': 'Вакансия не найдена'}), 404
+        if 'audio' not in request.files:
+            return jsonify({"error": "Файл аудио не найден"}), 400
 
-        db.session.delete(vacancy)
-        db.session.commit()
+        audio_file = request.files['audio']
+        url = "https://api.deepgram.com/v1/listen"
+        headers = {
+            "Authorization": f"Token {DEEPGRAM_API_KEY}"
+        }
+        response = requests.post(url, headers=headers, files={"audio": audio_file})
 
-        return jsonify({'message': 'Вакансия удалена успешно!'}), 200
-    except Exception as e:
-        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
-
-# ✅ Получение списка компаний
-@app.route('/companies', methods=['GET'])
-def get_companies():
-    companies = Company.query.all()
-    return jsonify({'companies': [company_to_dict(c) for c in companies]}), 200
-
-# ✅ Получение информации о компании
-@app.route('/company/<int:id>', methods=['GET'])
-def get_company(id):
-    company = Company.query.get(id)
-    if not company:
-        return jsonify({'error': 'Компания не найдена'}), 404
-    return jsonify(company_to_dict(company)), 200
-
-# ✅ Обновление информации о компании
-@app.route('/update_company/<int:id>', methods=['PUT'])
-def update_company(id):
-    try:
-        company = Company.query.get(id)
-        if not company:
-            return jsonify({'error': 'Компания не найдена'}), 404
-
-        data = request.get_json()
-        for key, value in data.items():
-            setattr(company, key, value)
-
-        db.session.commit()
-        return jsonify({'message': 'Компания обновлена успешно!'}), 200
+        return response.json()
 
     except Exception as e:
-        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
-
-# ✅ Удаление компании
-@app.route('/delete_company/<int:id>', methods=['DELETE'])
-def delete_company(id):
-    try:
-        company = Company.query.get(id)
-        if not company:
-            return jsonify({'error': 'Компания не найдена'}), 404
-
-        db.session.delete(company)
-        db.session.commit()
-        return jsonify({'message': 'Компания удалена успешно!'}), 200
-
-    except Exception as e:
-        return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
+        return jsonify({"error": "Ошибка распознавания речи", "details": str(e)}), 500
 
 # ✅ Функции для преобразования моделей в JSON
 def vacancy_to_dict(vacancy):
