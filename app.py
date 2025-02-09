@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
-from livekit import RoomServiceClient
+from livekit.api import RoomServiceClient  # ✅ Исправленный импорт
 from livekit.models import CreateRoomRequest
 
 app = Flask(__name__)
