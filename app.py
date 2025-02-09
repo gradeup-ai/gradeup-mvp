@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
-from livekit.api import RoomServiceClient  # ✅ Исправленный импорт
-from livekit.models import CreateRoomRequest
+from livekit import RoomServiceClient  # ✅ Исправленный импорт
+from livekit.models.room import CreateRoomRequest  # ✅ Исправленный импорт
 
 app = Flask(__name__)
 
@@ -17,14 +17,13 @@ db = SQLAlchemy(app)
 # 🔹 Настройка LiveKit
 LIVEKIT_URL = "wss://ai-hr-g13ip1bp.livekit.cloud"
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
-LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
-
-# Создание клиента для LiveKit
-lk_client = RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
 
 # 🔹 Настройка Deepgram
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-DEEPGRAM_VOICE_MODEL = "aura-asteria-en"  # Модель для синтеза речи
+DEEPGRAM_VOICE_MODEL = "aura-asteria-en"
+
+# Создание клиента для LiveKit
+lk_client = RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY)
 
 # 🔹 Модель компании
 class Company(db.Model):
@@ -137,3 +136,4 @@ def company_to_dict(company):
 # ✅ Запуск сервера
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
