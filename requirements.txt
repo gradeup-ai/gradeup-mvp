@@ -8,5 +8,5 @@ livekit
 Flask==3.1.0
 Flask-SQLAlchemy==3.1.1
 requests==2.31.0
-livekit==0.2.0
+livekit-server-sdk==0.2.1
 gunicorn==21.2.0
