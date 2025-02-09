@@ -74,19 +74,19 @@ def create_vacancy():
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Получение всех вакансий
+# ✅ Получение всех вакансий (исправлено)
 @app.route('/vacancies', methods=['GET'])
 def get_vacancies():
     vacancies = Vacancy.query.all()
-    return jsonify({'vacancies': [v.__dict__ for v in vacancies]}), 200
+    return jsonify({'vacancies': [vacancy_to_dict(v) for v in vacancies]}), 200
 
-# ✅ Получение вакансии по ID
+# ✅ Получение вакансии по ID (исправлено)
 @app.route('/vacancy/<int:id>', methods=['GET'])
 def get_vacancy(id):
     vacancy = Vacancy.query.get(id)
     if not vacancy:
         return jsonify({'error': 'Вакансия не найдена'}), 404
-    return jsonify(vacancy.__dict__), 200
+    return jsonify(vacancy_to_dict(vacancy)), 200
 
 # ✅ Обновление вакансии
 @app.route('/update_vacancy/<int:id>', methods=['PUT'])
@@ -121,19 +121,19 @@ def delete_vacancy(id):
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
-# ✅ Получение списка компаний
+# ✅ Получение списка компаний (исправлено)
 @app.route('/companies', methods=['GET'])
 def get_companies():
     companies = Company.query.all()
-    return jsonify({'companies': [c.__dict__ for c in companies]}), 200
+    return jsonify({'companies': [company_to_dict(c) for c in companies]}), 200
 
-# ✅ Получение информации о компании
+# ✅ Получение информации о компании (исправлено)
 @app.route('/company/<int:id>', methods=['GET'])
 def get_company(id):
     company = Company.query.get(id)
     if not company:
         return jsonify({'error': 'Компания не найдена'}), 404
-    return jsonify(company.__dict__), 200
+    return jsonify(company_to_dict(company)), 200
 
 # ✅ Обновление информации о компании
 @app.route('/update_company/<int:id>', methods=['PUT'])
@@ -168,6 +168,14 @@ def delete_company(id):
     except Exception as e:
         return jsonify({'error': 'Ошибка сервера', 'details': str(e)}), 500
 
+# ✅ Функции для корректного преобразования моделей в JSON
+def vacancy_to_dict(vacancy):
+    return {c.name: getattr(vacancy, c.name) for c in vacancy.__table__.columns}
+
+def company_to_dict(company):
+    return {c.name: getattr(company, c.name) for c in company.__table__.columns}
+
 # ✅ Запуск сервера
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
